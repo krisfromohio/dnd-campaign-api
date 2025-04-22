@@ -1,84 +1,117 @@
-from typing import List, Optional
+from sqlalchemy import Column, Integer, String, ForeignKey, JSON
+from sqlalchemy.orm import relationship, declarative_base
 
-class StoryObjective:
-    def __init__(self, description: str):
-        self.description = description
+Base = declarative_base()
 
-class MechanicObjective:
-    def __init__(self, description: str):
-        self.description = description
+# NPC model
+class NPC(Base):
+    __tablename__ = "npcs"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    stats = Column(JSON)
+    background_id = Column("Integer", ForeignKey('character_backgrounds.id'))
+    background = relationship("CharacterBackground", back_populates="npcs")
+    motivation = Column(String)
+    quote = Column(JSON)
+    ideals = Column(JSON)
+    quirks = Column(JSON)
+    faction_id = Column(Integer, ForeignKey('factions.id'))
+    
+    faction = relationship("Faction", back_populates="npcs")
 
-class Episode:
-    def __init__(self, title: str, story_objective: StoryObjective, mechanic_objective: MechanicObjective):
-        self.title = title
-        self.story_objective = story_objective
-        self.mechanic_objective = mechanic_objective
+# Faction model
+class Faction(Base):
+    __tablename__ = "factions"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    goal = Column(String)
 
-class Season:
-    def __init__(self, title: str, episodes: List[Episode]):
-        self.title = title
-        self.episodes = episodes
+    backgrounds = relationship("CharacterBackground", back_populates="faction" )
+    npcs = relationship("NPC", back_populates="faction" )
 
-class MapArea:
-    def __init__(self, name: str, description: str):
-        self.name = name
-        self.description = description
+# StoryArc model
+class StoryArc(Base):
+    __tablename__ = "story_arcs"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    description = Column(String)
+    goal = Column(String)
+    seasons = relationship("Season", back_populates="story_arcs")
 
-class Map:
-    def __init__(self, title: str, image_path: str, areas: List[MapArea]):
-        self.title = title
-        self.image_path = image_path
-        self.areas = areas
+# Season model
+class Season(Base):
+    __tablename__ = "seasons"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    description = Column(String)
+    story_arc_id = Column(Integer, ForeignKey('story_arcs.id'))
+    
+    story_arcs = relationship("StoryArc", back_populates="seasons")
+    episodes = relationship("Episode", back_populates="season")
 
-class Faction:
-    def __init__(self, name: str, goals: str, influence: str):
-        self.name = name
-        self.goals = goals
-        self.influence = influence
 
-class NPC:
-    def __init__(self, name: str, background: str, motivations: str, quote: str, ideals: str, quirks: str):
-        self.name = name
-        self.background = background
-        self.motivations = motivations
-        self.quote = quote
-        self.ideals = ideals
-        self.quirks = quirks
+# Episode model
+class Episode(Base):
+    __tablename__ = "episodes"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    description = Column(String)
+    story_goal = Column(String)
+    mechanics_goal = Column(String)
+    
+    season_id = Column(Integer, ForeignKey('seasons.id'))
+    
+    season = relationship("Season", back_populates="episodes")
 
-class Creature:
-    def __init__(self, name: str, terrain: str, frequency: str, is_nocturnal: bool):
-        self.name = name
-        self.terrain = terrain
-        self.frequency = frequency
-        self.is_nocturnal = is_nocturnal
+# Creature model
+class Creature(Base):
+    __tablename__ = "creatures"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    habitat = Column(String)
+    frequency = Column(String)
+    is_nocturnal = Column(String)
+    terrain = Column(String)
+    stats = Column(JSON)
 
-class CharacterBackground:
-    def __init__(self, name: str, equipment: List[str], stat_mods: dict, skills: List[str], tools: List[str], associated_faction: Optional[Faction] = None):
-        self.name = name
-        self.equipment = equipment
-        self.stat_mods = stat_mods
-        self.skills = skills
-        self.tools = tools
-        self.associated_faction = associated_faction
+# CustomRace model
+class CustomRace(Base):
+    __tablename__ = "custom_races"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    description = Column(String)
 
-class CustomRace:
-    def __init__(self, name: str, traits: dict):
-        self.name = name
-        self.traits = traits
+# CharacterBackground model
+class CharacterBackground(Base):
+    __tablename__ = "character_backgrounds"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    starting_equipment = Column(String)
+    stat_modifications = Column(String)
+    skills = Column(String)
+    tools = Column(String)
+    faction_id = Column(Integer, ForeignKey('factions.id'))
 
-class CustomClass:
-    def __init__(self, name: str, abilities: List[str]):
-        self.name = name
-        self.abilities = abilities
+    npcs = relationship("NPC", back_populates="background")
+    faction = relationship("Faction", back_populates="backgrounds")
 
-class CustomItem:
-    def __init__(self, name: str, description: str, magical: bool):
-        self.name = name
-        self.description = description
-        self.magical = magical
+# Map model (new addition)
+class Map(Base):
+    __tablename__ = "maps"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    description = Column(String)
+    image_url = Column(String)
+    
+    areas = relationship("MapArea", back_populates="map")
 
-class CustomSpell:
-    def __init__(self, name: str, effect: str, level: int):
-        self.name = name
-        self.effect = effect
-        self.level = level
+# MapArea model (new addition)
+class MapArea(Base):
+    __tablename__ = "map_areas"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    description = Column(String)
+    coordinates = Column(String)  # For storing area coordinates, e.g., "x,y"
+    map_id = Column(Integer, ForeignKey('maps.id'))
+    
+    map = relationship("Map", back_populates="areas")
