@@ -8,4 +8,6 @@ router = APIRouter()
 
 @router.get("/npcs/", response_model=List[schemas.NPCOut])
 def read_npcs(db: Session = Depends(get_db)):
-    return crud.get_all_objects(db, models.NPC)
+    result = crud.get_all_objects(db, models.NPC)
+    result = result
+    return result
