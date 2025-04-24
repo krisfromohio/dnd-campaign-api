@@ -1,14 +1,14 @@
 from pydantic import BaseModel
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 
 # ——— NPC Schemas ———
 class NPCBase(BaseModel):
     name: str
     background: Optional[str]
     motivation: Optional[str]
-    quote: Optional[str]
-    ideals: Optional[str]
-    quirks: Optional[List[str]]       # assuming you switched to JSON list
+    quote: Union[List[str], Dict]
+    ideals: Union[List[str], Dict]
+    quirks: Union[List[str], Dict]       
     faction_id: Optional[int]
 
 class NPCCreate(NPCBase):
