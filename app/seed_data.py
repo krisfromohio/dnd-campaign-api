@@ -24,20 +24,22 @@ def seed():
     db.add_all([
         NPC(
             name="Ghavena",
-            background="Ruthless warlord",
+            stats={"Strength": 18, "Dexterity": 12, "Constitution": 14},
+            background_id=None,  # Updated to match ForeignKey relationship
             motivation="Seize power",
-            quote="None shall stand before me!",
-            ideals="Strength above all",
-            quirks=["Laughs in battle", "Clenches fist when angry"],
+            quote=["None shall stand before me!"],  # Fixed to match JSON type
+            ideals=["Strength above all"],  # Fixed to match JSON type
+            quirks=["Laughs in battle", "Clenches fist when angry"],  # Fixed to match JSON type
             faction_id=iron_ring.id
         ),
         NPC(
             name="Elowen",
-            background="Forest druid",
+            stats={"Wisdom": 16, "Dexterity": 14, "Constitution": 12},
+            background_id=None,  # Updated to match ForeignKey relationship
             motivation="Restore balance",
-            quote="The woods whisper to me.",
-            ideals="Harmony with nature",
-            quirks=["Talks to animals"],
+            quote=["The woods whisper to me."],  # Fixed to match JSON type
+            ideals=["Harmony with nature"],  # Fixed to match JSON type
+            quirks=["Talks to animals"],  # Fixed to match JSON type
             faction_id=silver_hand.id
         ),
     ])
@@ -49,9 +51,7 @@ def seed():
     season1 = Season(
         name="Shadows Gather",
         description="Strange happenings",
-        story_arc_id=arc.id,
-        story_objective="Foreshadow the end fight",
-        mechanic_objective="Party reaches level 2"
+        story_arc_id=arc.id
     )
     db.add(season1); db.flush()
 
@@ -59,8 +59,8 @@ def seed():
         name="Whispers in the Dark",
         description="Hear the rumors",
         season_id=season1.id,
-        story_objective="Introduce Ghavena",
-        mechanic_objective="Party finds first clue"
+        story_goal="Introduce Ghavena",
+        mechanics_goal="Party finds first clue"
     ))
 
     # --- Creatures ---
@@ -68,7 +68,7 @@ def seed():
         name="Nightstalker",
         habitat="Forest",
         frequency="Rare",
-        is_nocturnal=True,
+        is_nocturnal="True",  # Fixed to match String type
         terrain="Dense woods",
         stats={"HP": 45, "AC": 15}
     ))
@@ -81,7 +81,7 @@ def seed():
         stat_modifications="STR+1",
         skills="Smith’s Tools",
         tools="Forge Tools",
-        associated_factions=[iron_ring.id]
+        faction_id=None  # Updated to match ForeignKey relationship
     ))
 
     # --- Maps & Areas ---
