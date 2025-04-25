@@ -1,3 +1,4 @@
+from app.schemas import CharacterBackgroundCreate, CharacterBackgroundOut
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from app.models import CharacterBackground
@@ -13,7 +14,21 @@ def get_character_background(background_id: int, db: Session = Depends(get_db)):
     return background
 
 @router.post("/")
-def create_character_background(background: CharacterBackground, db: Session = Depends(get_db)):
+def create_character_background(background: CharacterBackgroundCreate, db: Session = Depends(get_db)):
+
+
+    new_background = CharacterBackground(
+        name=background.name,
+        starting_equipment=background.starting_equipment,
+        skills = background.skills,
+        tools = background.tools,
+        faction_id = background.faction_id,
+        stat_modifications = background.stat_modifications)
+    db.add(background)
+    db.commit()
+    db.refresh(background)
+    return CharacterBackgroundOut.from_orm(new_background)
+
     db.add(background)
     db.commit()
     db.refresh(background)

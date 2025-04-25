@@ -6,9 +6,11 @@ class NPCBase(BaseModel):
     name: str
     background: Optional[str]
     motivation: Optional[str]
+    stats: Union[List[str], Dict]
     quote: Union[List[str], Dict]
     ideals: Union[List[str], Dict]
-    quirks: Union[List[str], Dict]       
+    quirks: Union[List[str], Dict]   
+    background_id: Optional[int]
     faction_id: Optional[int]
 
 class NPCCreate(NPCBase):
@@ -18,7 +20,8 @@ class NPCOut(NPCBase):
     id: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
 
 
 # ——— Faction Schemas ———
