@@ -1,4 +1,5 @@
 # Ignore virtual environment
+kris-env/
 venv/
 
 # Ignore Python cache
@@ -10,3 +11,6 @@ __pycache__/
 
 # Ignore test database files
 *.db
+/.vs/dnd-campaign-manager/FileContentIndex
+/TestResults
+/.vs/dnd-campaign-manager/v17/TestStore/0
