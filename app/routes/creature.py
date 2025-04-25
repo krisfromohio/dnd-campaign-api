@@ -1,3 +1,4 @@
+from app.schemas import CreatureCreate
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from app.models import Creature
@@ -13,11 +14,19 @@ def get_creature(creature_id: int, db: Session = Depends(get_db)):
     return creature
 
 @router.post("/")
-def create_creature(creature: Creature, db: Session = Depends(get_db)):
+def create_creature(creature: CreatureCreate, db: Session = Depends(get_db)):
+    new_creature = Creature(
+        frequency = creature.frequency,
+        habitat = creature.habitat,
+        is_nocturnal = creature.is_nocturnal,
+        name = creature.name,
+        stats = creature.stats,
+        terrain = creature.terrain
+        )
     db.add(creature)
     db.commit()
     db.refresh(creature)
-    return creature
+    return CreatureOut.from_orm(new_creature)
 
 @router.get("/")
 def get_all_creatures(db: Session = Depends(get_db)):

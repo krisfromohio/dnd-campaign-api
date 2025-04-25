@@ -1,3 +1,4 @@
+from app.schemas import CustomRaceCreate, CustomRaceOut
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from app.models import CustomRace
@@ -13,11 +14,16 @@ def get_custom_race(custom_race_id: int, db: Session = Depends(get_db)):
     return custom_race
 
 @router.post("/")
-def create_custom_race(custom_race: CustomRace, db: Session = Depends(get_db)):
-    db.add(custom_race)
+def create_custom_race(custom_race: CustomRaceCreate, db: Session = Depends(get_db)):
+    new_race = CustomRace(
+        name = custom_race.name,
+        description =  custom_race.description,
+        traits = custom_race.traits
+        )
+    db.add(new_race)
     db.commit()
-    db.refresh(custom_race)
-    return custom_race
+    db.refresh(new_race)
+    return CustomRaceOut.from_orm(new_race)
 
 @router.get("/")
 def get_all_custom_races(db: Session = Depends(get_db)):
