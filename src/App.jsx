@@ -102,7 +102,7 @@ export function passiveSkill(sheet, skillKey) {
 
 export function stateDC(skillKey, relationship) {
   const raw = STATE_MODIFIERS[skillKey] ? STATE_MODIFIERS[skillKey](relationship) : 0;
-  return clampNum(Math.round(raw), -5, 5) || 0; // '|| 0' collapses -0 to 0
+  return clampNum(Math.round(raw), -5, 5);
 }
 
 export function computeEffectiveDC(skillKey, baseDC, relationship, valueAlignment = "neutral") {
