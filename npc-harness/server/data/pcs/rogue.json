@@ -1,0 +1,13 @@
+{
+  "id": "rogue",
+  "name": "Vess",
+  "sheet": {
+    "abilities": { "str": 8, "dex": 17, "con": 11, "int": 12, "wis": 10, "cha": 11 },
+    "level": 3,
+    "proficiencyBonus": 2,
+    "skillProficiencies": { "persuasion": false, "deception": true, "intimidation": false, "performance": false, "insight": false, "sleightOfHand": true, "stealth": true },
+    "saveProficiencies": { "dex": true, "int": true, "str": false, "con": false, "wis": false, "cha": false },
+    "combat": { "hp": 20, "ac": 15, "speed": 35 }
+  },
+  "startingGold": 8
+}

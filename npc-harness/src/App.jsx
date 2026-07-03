@@ -428,6 +428,22 @@ Respond ONLY with valid JSON, no preamble, no markdown fences:
 { "skill": "persuasion", "dc": 15, "value_alignment": "neutral" }`;
 }
 
+// Pure: merge an item into an inventory list, combining quantities if an
+// item of the same name already exists rather than creating a duplicate row.
+export function addItem(list, item) {
+  const existing = list.find((i) => i.name === item.name);
+  if (existing) return list.map((i) => (i.name === item.name ? { ...i, qty: i.qty + item.qty } : i));
+  return [...list, item];
+}
+
+// Pure: does this objective's state-threshold condition currently hold?
+// Only "active" filtering happens at the call site — this just evaluates
+// the comparator against the given relationship snapshot.
+export function objectiveConditionMet(objective, relationship) {
+  const val = relationship[objective.attribute];
+  return objective.comparator === ">=" ? val >= objective.threshold : val <= objective.threshold;
+}
+
 export function parseModelJSON(raw) {
   const cleaned = raw.replace(/```json|```/g, "").trim();
   return JSON.parse(cleaned);
@@ -646,6 +662,18 @@ export default function NPCTestHarness() {
   const [visualMood, setVisualMood] = useState(null);
   const [introLoading, setIntroLoading] = useState(false);
 
+  // ---- persistence: which NPC/PC pair this session is, and load/save state ----
+  const [npcId, setNpcId] = useState(null);
+  const [pcId, setPcId] = useState(null);
+  const [npcName, setNpcName] = useState("");
+  const [pcName, setPcName] = useState("");
+  const [npcList, setNpcList] = useState([]);
+  const [pcList, setPcList] = useState([]);
+  const [sessionLoading, setSessionLoading] = useState(false);
+  const [sessionError, setSessionError] = useState(null);
+  const [pickerNpc, setPickerNpc] = useState("");
+  const [pickerPc, setPickerPc] = useState("");
+
   const scrollRef = useRef(null);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [history]);
 
@@ -653,27 +681,6 @@ export default function NPCTestHarness() {
     const recent = history.filter((h) => h.role === "player" || h.role === "npc").slice(-10);
     if (recent.length === 0) return "";
     return recent.map((h) => (h.role === "player" ? `Player: ${h.text}` : `NPC: ${h.text}`)).join("\n");
-  };
-
-  const applyDeltas = (rawDeltas, maxAbs) => {
-    const clamped = {};
-    let exceeded = false;
-    for (const { key } of RELATIONSHIP_KEYS) {
-      let d = rawDeltas[key] ?? 0;
-      if (Math.abs(d) > maxAbs) exceeded = true;
-      d = clampNum(d, -maxAbs, maxAbs);
-      clamped[key] = d;
-    }
-    if (exceeded) setClampWarning(`Model returned a delta outside ±${maxAbs} — clamped.`);
-    setLastDeltas(clamped);
-    let nextRel = relationship;
-    setRelationship((prev) => {
-      const next = { ...prev };
-      for (const { key } of RELATIONSHIP_KEYS) next[key] = clamp100(prev[key] + clamped[key]);
-      nextRel = next;
-      return next;
-    });
-    return clamped, nextRel;
   };
 
   const grantReward = (itemId, label) => {
@@ -689,6 +696,164 @@ export default function NPCTestHarness() {
   };
 
   const pushSystem = (text) => setHistory((h) => [...h, { role: "system", text }]);
+
+  // Snapshot-based save: POSTs the full current play-state to the backend.
+  // Called after every conversation transaction (a completed turn, an
+  // inventory action, an objective trigger) — not on every keystroke in the
+  // editor panels, which would be excessive network chatter for authoring edits.
+  const persistAll = async (overrides = {}) => {
+    if (!npcId || !pcId) return;
+    const objectiveStatus = {};
+    (overrides.objectives || objectives).forEach((o) => (objectiveStatus[o.id] = o.status));
+    const payload = {
+      npc: {
+        inventory: overrides.npcInventory ?? npcInventory,
+        gold: overrides.npcGold ?? npcGold,
+        portraitUrl: overrides.portraitUrl !== undefined ? overrides.portraitUrl : portraitUrl,
+        moodLabel: overrides.moodLabel !== undefined ? overrides.moodLabel : moodLabel,
+        visualMood: overrides.visualMood !== undefined ? overrides.visualMood : visualMood,
+        encountered: overrides.encountered !== undefined ? overrides.encountered : (portraitUrl !== null || overrides.portraitUrl),
+      },
+      pc: {
+        playerModel: overrides.playerModel ?? playerModel,
+        inventory: overrides.pcInventory ?? pcInventory,
+        gold: overrides.pcGold ?? pcGold,
+      },
+      relationship: overrides.relationship ?? relationship,
+      objectiveStatus,
+      history: overrides.history ?? history,
+    };
+    try {
+      await fetch(`/api/session/${npcId}/${pcId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      // Non-fatal — play continues locally even if a save hiccups. Surface
+      // it quietly rather than interrupting the conversation.
+      console.error("Autosave failed:", e);
+    }
+  };
+
+  const saveDefinitions = async () => {
+    if (!npcId || !pcId) return;
+    setError(null);
+    try {
+      await Promise.all([
+        fetch(`/api/npcs/${npcId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: npcName || npcId, persona, coreValues, appearance, sheet: npcSheet,
+            objectives: objectives.map(({ status, ...def }) => def),
+            inventory: npcInventory, startingGold: npcGold,
+          }),
+        }),
+        fetch(`/api/pcs/${pcId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: pcName || pcId, sheet: pcSheet, startingGold: pcGold }),
+        }),
+      ]);
+      await persistAll();
+      pushSystem("💾 Definitions saved.");
+    } catch (e) {
+      setError("Could not save definitions: " + (e.message || e));
+    }
+  };
+
+  const loadSession = async (nId, pId) => {
+    setSessionLoading(true);
+    setSessionError(null);
+    try {
+      const res = await fetch(`/api/session/${nId}/${pId}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Failed to load session (${res.status})`);
+      }
+      const data = await res.json();
+      setNpcId(nId);
+      setPcId(pId);
+      setNpcName(data.npc.name || nId);
+      setPcName(data.pc.name || pId);
+      setPersona(data.npc.persona);
+      setCoreValues(data.npc.coreValues);
+      setAppearance(data.npc.appearance);
+      setNpcSheet(data.npc.sheet);
+      setNpcInventory(data.npc.inventory || []);
+      setNpcGold(data.npc.gold || 0);
+      setPcSheet(data.pc.sheet);
+      setPcInventory(data.pc.inventory || []);
+      setPcGold(data.pc.gold || 0);
+      setPlayerModel(data.pc.playerModel);
+      setRelationship(data.relationship);
+      setObjectives(data.objectives);
+      setHistory(data.history || []);
+      // Reuse the cached portrait if this NPC has been encountered before —
+      // do NOT regenerate it. First-time NPCs get one via "New Introduction".
+      if (data.npc.portraitUrl) {
+        setPortraitUrl(data.npc.portraitUrl);
+        setMoodLabel(data.npc.moodLabel);
+        setVisualMood(data.npc.visualMood);
+        setPortraitReady(true);
+        setPortraitLoading(false);
+      } else {
+        setPortraitUrl(null);
+        setPortraitReady(false);
+        setMoodLabel(null);
+        setVisualMood(null);
+      }
+      setLastParsed(null);
+      setLastDeltas({});
+      setDiceLog([]);
+    } catch (e) {
+      setSessionError(e.message || String(e));
+    } finally {
+      setSessionLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlNpc = params.get("npc");
+    const urlPc = params.get("pc");
+    if (urlNpc && urlPc) {
+      loadSession(urlNpc, urlPc);
+    } else {
+      Promise.all([
+        fetch("/api/npcs").then((r) => r.json()).catch(() => []),
+        fetch("/api/pcs").then((r) => r.json()).catch(() => []),
+      ]).then(([npcs, pcs]) => {
+        setNpcList(npcs);
+        setPcList(pcs);
+        if (npcs[0]) setPickerNpc(npcs[0].id);
+        if (pcs[0]) setPickerPc(pcs[0].id);
+      });
+    }
+  }, []);
+
+  const startSession = () => {
+    if (!pickerNpc || !pickerPc) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("npc", pickerNpc);
+    url.searchParams.set("pc", pickerPc);
+    window.history.replaceState({}, "", url);
+    loadSession(pickerNpc, pickerPc);
+  };
+
+  // Debounced autosave: any change to play-relevant state (relationship
+  // sliders, inventories, gold, objective statuses, history) schedules a
+  // save a moment later, coalescing rapid changes (e.g. dragging a slider)
+  // into one request instead of one per tick.
+  const autosaveTimer = useRef(null);
+  useEffect(() => {
+    if (!npcId || !pcId || sessionLoading) return;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => persistAll(), 800);
+    return () => clearTimeout(autosaveTimer.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [relationship, npcInventory, pcInventory, npcGold, pcGold, objectives, history, playerModel]);
 
   const fireTrigger = async (obj) => {
     setObjectives((list) => list.map((x) => (x.id === obj.id ? { ...x, status: "complete" } : x)));
@@ -709,9 +874,7 @@ export default function NPCTestHarness() {
   const checkStateObjectives = (rel) => {
     objectives.forEach((o) => {
       if (o.status !== "active") return;
-      const val = rel[o.attribute];
-      const met = o.comparator === ">=" ? val >= o.threshold : val <= o.threshold;
-      if (met) fireTrigger(o);
+      if (objectiveConditionMet(o, rel)) fireTrigger(o);
     });
   };
 
@@ -883,11 +1046,6 @@ export default function NPCTestHarness() {
     runNarrate(opt.text, resolution);
   };
 
-  const addItem = (list, item) => {
-    const existing = list.find((i) => i.name === item.name);
-    if (existing) return list.map((i) => (i.name === item.name ? { ...i, qty: i.qty + item.qty } : i));
-    return [...list, item];
-  };
 
   const giveItem = (item) => {
     setNpcInventory((inv) => {
@@ -938,10 +1096,11 @@ export default function NPCTestHarness() {
 
   const generateIntro = async () => {
     setIntroLoading(true);
-    setPortraitReady(false);
     setError(null);
     setPendingOptions(null);
     setPendingSkill(null);
+    const alreadyEncountered = !!portraitUrl;
+    if (!alreadyEncountered) setPortraitReady(false);
     try {
       const prompt = buildIntroPrompt(persona, coreValues, appearance, relationship, playerModel);
       const raw = await callClaude(prompt, "Begin the introduction.");
@@ -951,13 +1110,22 @@ export default function NPCTestHarness() {
       catch (e) { setParseFailures((c) => c + 1); throw new Error("Intro call did not return valid JSON. See raw output below."); }
       setLastRaw(raw);
       setLastParsed({ ...parsed, player_choices: tagChoicesWithDC(parsed.player_choices, relationship) });
+      setLastDeltas({});
+      // Append, don't replace — a returning NPC should keep prior history.
+      // Only a genuinely first-ever encounter starts from an empty history.
+      setHistory((h) => [...h, { role: "npc", text: parsed.npc_dialogue || "(no dialogue returned)" }]);
+
+      if (alreadyEncountered) {
+        // NPC image is generated only once, ever — reuse the cached portrait.
+        setIntroLoading(false);
+        return;
+      }
       setMoodLabel(parsed.mood_label || null);
       setVisualMood(parsed.visual_mood || null);
-      setHistory([{ role: "npc", text: parsed.npc_dialogue || "(no dialogue returned)" }]);
-      setLastDeltas({});
       const url = buildPortraitUrl(appearance, parsed.visual_mood || parsed.mood_label || "neutral expression");
       setPortraitLoading(true);
       setPortraitUrl(url);
+      await persistAll({ portraitUrl: url, moodLabel: parsed.mood_label || null, visualMood: parsed.visual_mood || null, encountered: true });
     } catch (e) {
       setError(e.message || String(e));
     } finally {
@@ -969,7 +1137,9 @@ export default function NPCTestHarness() {
     if (!visualMood) return;
     setPortraitReady(false);
     setPortraitLoading(true);
-    setPortraitUrl(buildPortraitUrl(appearance, visualMood));
+    const url = buildPortraitUrl(appearance, visualMood);
+    setPortraitUrl(url);
+    persistAll({ portraitUrl: url, encountered: true });
   };
 
   const loadScenario = (s) => {
@@ -1161,19 +1331,65 @@ export default function NPCTestHarness() {
         .inv-action-btn:hover { border-color: #7cffb2; color: #7cffb2; }
         .inv-action-btn:disabled { opacity: 0.35; cursor: default; }
         .inv-action-btn.steal:hover { border-color: #ff8b7c; color: #ff8b7c; }
+        .picker-screen { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }
+        .picker-loading { color: #8a8f98; font-size: 12px; }
+        .picker-card { background: #1a1c22; border: 1px solid #262a33; border-radius: 8px; padding: 20px; width: 100%; max-width: 360px; }
+        .picker-row { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+        .picker-row label { display: flex; flex-direction: column; gap: 4px; font-size: 10px; color: #8a8f98; letter-spacing: 0.06em; }
+        .picker-row select { background: #1c1f26; border: 1px solid #2e323c; border-radius: 4px; color: #e8e6e1; font-family: inherit; font-size: 12px; padding: 8px; }
+        .picker-hint { font-size: 9.5px; color: #565a63; margin-top: 12px; line-height: 1.5; }
+        .picker-hint code { background: #1c1f26; padding: 1px 4px; border-radius: 3px; color: #7cc8ff; }
+        .scenario-warning { font-size: 9px; color: #ffb86b; line-height: 1.5; margin-bottom: 10px; }
       `}</style>
 
       <div className="topbar">
         <div>
           <h1>NPC STATE HARNESS</h1>
-          <div className="sub">stat blocks · skill checks · objectives · inventory · portraits</div>
+          <div className="sub">
+            {npcId && pcId ? `session: ${npcName || npcId} × ${pcName || pcId}` : "stat blocks · skill checks · objectives · inventory · portraits"}
+          </div>
         </div>
         <div className="stats">
+          {npcId && pcId && <button className="mini-btn" onClick={saveDefinitions}>💾 save definitions</button>}
           <span>calls: <b>{callCount}</b></span>
           <span>parse failures: <b style={{ color: parseFailures ? "#ff8b7c" : "#e8e6e1" }}>{parseFailures}</b></span>
         </div>
       </div>
 
+      {(!npcId || !pcId) && (
+        <div className="picker-screen">
+          {sessionLoading && <div className="picker-loading">Loading session…</div>}
+          {sessionError && <div className="error-banner" style={{ margin: "0 0 12px" }}>ERROR: {sessionError}</div>}
+          {!sessionLoading && (
+            <div className="picker-card">
+              <p className="panel-title">START A SESSION</p>
+              <div className="picker-row">
+                <label>
+                  <span>NPC</span>
+                  <select value={pickerNpc} onChange={(e) => setPickerNpc(e.target.value)}>
+                    {npcList.length === 0 && <option value="">(none found)</option>}
+                    {npcList.map((n) => <option key={n.id} value={n.id}>{n.name} ({n.id})</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>PC</span>
+                  <select value={pickerPc} onChange={(e) => setPickerPc(e.target.value)}>
+                    {pcList.length === 0 && <option value="">(none found)</option>}
+                    {pcList.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.id})</option>)}
+                  </select>
+                </label>
+              </div>
+              <button className="intro-btn" onClick={startSession} disabled={!pickerNpc || !pickerPc}>▶ START SESSION</button>
+              <div className="picker-hint">
+                Or link directly with <code>?npc=&lt;id&gt;&amp;pc=&lt;id&gt;</code> in the URL — that's how a
+                caller embeds a specific NPC+PC pairing without seeing this picker at all.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {npcId && pcId && (
       <div className="layout">
         {/* LEFT: NPC / PC tabs */}
         <div className="panel">
@@ -1350,6 +1566,7 @@ export default function NPCTestHarness() {
 
           <div className="section">
             <p className="panel-title">TEST SCENARIOS</p>
+            <div className="scenario-warning">⚠ these overwrite this session's saved state — for testing a new NPC, not for live campaign use</div>
             {SCENARIOS.map((s) => (
               <button key={s.name} className="scenario-btn" onClick={() => loadScenario(s)}>
                 <span className="name">{s.name}</span>
@@ -1382,6 +1599,7 @@ export default function NPCTestHarness() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

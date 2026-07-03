@@ -1,0 +1,5 @@
+unzip -o /data/data/com.termux/files/home/storage/downloads/dnd-campaign-api.zip
+cp -rf dnd-campaign-api/Dockerfile dnd-campaign-api/README.md dnd-campaign-api/fly.toml dnd-campaign-api/index.html dnd-campaign-api/package.json dnd-campaign-api/server dnd-campaign-api/src dnd-campaign-api/vite.config.js .
+rm -rf dnd-campaign-api
+npm install
+npm test

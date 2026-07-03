@@ -15,6 +15,8 @@ import {
   suggestedDelta,
   tagChoicesWithDC,
   parseModelJSON,
+  addItem,
+  objectiveConditionMet,
 } from "./App.jsx";
 
 // A minimal fixture sheet — just enough shape for skillModifier/saveModifier/passiveSkill.
@@ -256,6 +258,42 @@ describe("tagChoicesWithDC", () => {
   it("handles an empty or missing choices array", () => {
     expect(tagChoicesWithDC(undefined, neutralRel)).toEqual([]);
     expect(tagChoicesWithDC([], neutralRel)).toEqual([]);
+  });
+});
+
+describe("addItem", () => {
+  it("adds a new item to an empty list", () => {
+    const result = addItem([], { name: "Rope", qty: 1, value: 1 });
+    expect(result).toEqual([{ name: "Rope", qty: 1, value: 1 }]);
+  });
+  it("combines quantity when an item of the same name already exists", () => {
+    const result = addItem([{ name: "Rum", qty: 2, value: 8 }], { name: "Rum", qty: 1, value: 8 });
+    expect(result).toEqual([{ name: "Rum", qty: 3, value: 8 }]);
+  });
+  it("does not mutate the original list", () => {
+    const original = [{ name: "Rum", qty: 2, value: 8 }];
+    addItem(original, { name: "Rum", qty: 1, value: 8 });
+    expect(original[0].qty).toBe(2);
+  });
+  it("treats items with different names as distinct rows", () => {
+    const result = addItem([{ name: "Rum", qty: 1, value: 8 }], { name: "Compass", qty: 1, value: 25 });
+    expect(result).toHaveLength(2);
+  });
+});
+
+describe("objectiveConditionMet", () => {
+  const rel = { trust: 70, patience: 20, suspicion: 15, respect: 55 };
+  it("evaluates >= correctly", () => {
+    expect(objectiveConditionMet({ attribute: "trust", comparator: ">=", threshold: 70 }, rel)).toBe(true);
+    expect(objectiveConditionMet({ attribute: "trust", comparator: ">=", threshold: 71 }, rel)).toBe(false);
+  });
+  it("evaluates <= correctly", () => {
+    expect(objectiveConditionMet({ attribute: "suspicion", comparator: "<=", threshold: 15 }, rel)).toBe(true);
+    expect(objectiveConditionMet({ attribute: "suspicion", comparator: "<=", threshold: 14 }, rel)).toBe(false);
+  });
+  it("reads the correct attribute off the relationship object", () => {
+    expect(objectiveConditionMet({ attribute: "respect", comparator: ">=", threshold: 55 }, rel)).toBe(true);
+    expect(objectiveConditionMet({ attribute: "patience", comparator: ">=", threshold: 55 }, rel)).toBe(false);
   });
 });
 

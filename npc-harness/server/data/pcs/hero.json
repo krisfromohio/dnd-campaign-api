@@ -1,0 +1,13 @@
+{
+  "id": "hero",
+  "name": "Kris",
+  "sheet": {
+    "abilities": { "str": 10, "dex": 12, "con": 12, "int": 10, "wis": 10, "cha": 13 },
+    "level": 3,
+    "proficiencyBonus": 2,
+    "skillProficiencies": { "persuasion": true, "deception": true, "intimidation": false, "performance": false, "insight": false, "sleightOfHand": false },
+    "saveProficiencies": { "cha": true, "wis": true, "str": false, "dex": false, "con": false, "int": false },
+    "combat": { "hp": 24, "ac": 13, "speed": 30 }
+  },
+  "startingGold": 15
+}
