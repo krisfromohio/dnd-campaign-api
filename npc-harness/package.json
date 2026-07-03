@@ -1,0 +1,23 @@
+{
+  "name": "dnd-campaign-api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev:client": "vite",
+    "dev:server": "node server/index.js",
+    "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
+    "build": "vite build",
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^8.2.2",
+    "vite": "^5.4.8"
+  }
+}
